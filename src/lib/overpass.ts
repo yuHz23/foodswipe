@@ -1,4 +1,4 @@
-import type { FoodPlace, LatLng } from "@/types";
+import type { FoodPlace, LatLng, PlaceDetails } from "@/types";
 import { osmRealImage, pickFoodPhoto } from "@/lib/foodPhotos";
 
 /**
@@ -192,7 +192,49 @@ function parseOpenNow(tags: Record<string, string>): boolean | null {
   return decision === null ? false : decision;
 }
 
-function toFoodPlace(el: OverpassElement): FoodPlace | null {
+/** Trích thông tin chi tiết từ tag OSM */
+function buildDetails(tags: Record<string, string>): PlaceDetails {
+  const diet: string[] = [];
+  if (tags["diet:vegetarian"] === "yes") diet.push("Chay");
+  if (tags["diet:vegan"] === "yes") diet.push("Thuần chay");
+  if (tags["diet:halal"] === "yes") diet.push("Halal");
+
+  const cardKeys = [
+    "payment:cards",
+    "payment:credit_cards",
+    "payment:debit_cards",
+    "payment:visa",
+    "payment:mastercard",
+    "payment:contactless",
+  ];
+  const cards = cardKeys.some((k) => tags[k] === "yes");
+  const cash = tags["payment:cash"] === "yes";
+
+  const clean = (v?: string) => (v && v.trim() ? v.trim() : undefined);
+
+  return {
+    phone: clean(tags.phone || tags["contact:phone"] || tags["contact:mobile"]),
+    website: clean(tags.website || tags["contact:website"] || tags.url),
+    openingHours: clean(tags.opening_hours),
+    cuisineRaw: clean(tags.cuisine?.replace(/[_;]/g, " ")),
+    brand: clean(tags.brand),
+    takeaway: clean(tags.takeaway),
+    delivery: clean(tags.delivery),
+    dineIn: clean(tags["dine_in"]),
+    outdoorSeating: clean(tags.outdoor_seating),
+    reservation: clean(tags.reservation),
+    wheelchair: clean(tags.wheelchair),
+    internetAccess: clean(tags.internet_access),
+    smoking: clean(tags.smoking),
+    airConditioning: clean(tags.air_conditioning),
+    cards: cards || undefined,
+    cash: cash || undefined,
+    diet: diet.length ? diet : undefined,
+  };
+}
+
+/** Map 1 element Overpass → FoodPlace (null nếu không đủ dữ liệu) */
+export function osmElementToPlace(el: OverpassElement): FoodPlace | null {
   const tags = el.tags ?? {};
   const name = tags.name || tags["name:vi"] || tags["name:en"];
   if (!name) return null; // bỏ quán không tên cho chất lượng
@@ -237,6 +279,9 @@ function toFoodPlace(el: OverpassElement): FoodPlace | null {
     mapUrl:
       tags.website ||
       `https://www.openstreetmap.org/${el.type}/${el.id}`,
+    osmType: el.type,
+    osmId: el.id,
+    details: buildDetails(tags),
   };
 }
 
@@ -252,8 +297,8 @@ async function fetchOverpassElements(
 ): Promise<OverpassElement[]> {
   // 1) Proxy same-origin /api/nearby (server-side, có cache CDN, không lo CORS/UA)
   try {
-    const lat = origin.lat.toFixed(3); // làm tròn ~110m để tăng cache hit
-    const lng = origin.lng.toFixed(3);
+    const lat = origin.lat.toFixed(4); // làm tròn ~11m để tăng cache hit
+    const lng = origin.lng.toFixed(4);
     const res = await fetch(
       `/api/nearby?lat=${lat}&lng=${lng}&radius=${radiusKm}`,
       { signal },
@@ -310,7 +355,7 @@ export async function fetchNearbyPlaces(
   const elements = await fetchOverpassElements(origin, radiusKm, signal);
 
   const places = elements
-    .map(toFoodPlace)
+    .map(osmElementToPlace)
     .filter((p): p is FoodPlace => p !== null);
 
   // Dedupe theo tên + toạ độ ~ (tránh trùng node/way cùng quán)
@@ -323,4 +368,50 @@ export async function fetchNearbyPlaces(
   });
 
   return { places: unique };
+}
+
+/**
+ * Tải 1 quán theo id OSM (vd "osm-node-123") — để mở link chia sẻ cho người
+ * chưa có dữ liệu trong cache. Trả null nếu không tìm thấy.
+ */
+export async function fetchOsmPlace(
+  placeId: string,
+  signal?: AbortSignal,
+): Promise<FoodPlace | null> {
+  const m = placeId.match(/^osm-(node|way|relation)-(\d+)$/);
+  if (!m) return null;
+  const [, type, id] = m;
+
+  const buildFrom = (el: OverpassElement | null): FoodPlace | null =>
+    el ? osmElementToPlace(el) : null;
+
+  // 1) Proxy /api/place
+  try {
+    const res = await fetch(`/api/place?type=${type}&id=${id}`, { signal });
+    if (res.ok) {
+      const data = (await res.json()) as { element?: OverpassElement | null };
+      if (data.element) return buildFrom(data.element);
+    }
+  } catch (err) {
+    if (signal?.aborted) throw err;
+  }
+
+  // 2) Fallback gọi thẳng Overpass
+  const query = `[out:json];${type}(${id});out center 1;`;
+  for (const endpoint of ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query),
+        signal,
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as OverpassResponse;
+      return buildFrom(data.elements?.[0] ?? null);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+  }
+  return null;
 }

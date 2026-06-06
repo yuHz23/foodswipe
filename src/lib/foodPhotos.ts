@@ -4,27 +4,27 @@
  * Ưu tiên ảnh thật từ OSM (image / wikimedia_commons) nếu quán có.
  */
 
-/** Map tag tiếng Việt → từ khoá ảnh (Flickr coverage tốt) */
+/** Map tag tiếng Việt → từ khoá ảnh (1 keyword mạnh để Flickr khớp đúng món) */
 const TAG_KEYWORD: Record<string, string> = {
-  Phở: "pho,noodle",
-  Bún: "noodle,soup",
-  Cơm: "rice,meal",
-  Lẩu: "hotpot,food",
-  Nướng: "bbq,grill",
-  "Cà phê": "coffee,cafe",
-  "Trà sữa": "bubble,tea",
+  Phở: "pho",
+  Bún: "noodles",
+  Cơm: "rice",
+  Lẩu: "hotpot",
+  Nướng: "barbecue",
+  "Cà phê": "coffee",
+  "Trà sữa": "bubbletea",
   "Hải sản": "seafood",
-  Chay: "vegetarian,salad",
+  Chay: "vegetarian",
   Pizza: "pizza",
-  Bánh: "bakery,cake",
+  Bánh: "bakery",
   "Ăn vặt": "streetfood",
-  "Nhà hàng": "restaurant,food",
-  "Quán bar": "bar,drinks",
-  "Quán nhậu": "beer,food",
+  "Nhà hàng": "restaurant",
+  "Quán bar": "cocktail",
+  "Quán nhậu": "beer",
   "Ẩm thực": "food",
 };
 
-const DEFAULT_KEYWORD = "food,restaurant";
+const DEFAULT_KEYWORD = "food";
 
 function hashInt(s: string): number {
   let h = 0;

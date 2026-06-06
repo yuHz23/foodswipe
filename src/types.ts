@@ -46,6 +46,30 @@ export type SortMode = "distance" | "rating" | "price";
 
 export type PlaceSource = "mock" | "osm";
 
+/** Thông tin chi tiết của quán (đa phần từ tag OSM, có thể thiếu) */
+export type PlaceDetails = {
+  phone?: string;
+  website?: string;
+  /** Chuỗi opening_hours gốc (OSM) */
+  openingHours?: string;
+  cuisineRaw?: string;
+  brand?: string;
+  /** yes | no | only ... */
+  takeaway?: string;
+  delivery?: string;
+  dineIn?: string;
+  outdoorSeating?: string;
+  reservation?: string;
+  wheelchair?: string;
+  internetAccess?: string;
+  smoking?: string;
+  airConditioning?: string;
+  cards?: boolean;
+  cash?: boolean;
+  /** Chế độ ăn: Chay/Thuần chay/Halal... */
+  diet?: string[];
+};
+
 export type FoodPlace = {
   id: string;
   name: string;
@@ -64,6 +88,11 @@ export type FoodPlace = {
   source: PlaceSource;
   /** Link bản đồ ưu tiên (vd trang OSM); fallback dùng Google Maps theo toạ độ */
   mapUrl?: string;
+  /** Loại + id OSM (để chia sẻ & tải lại theo id) */
+  osmType?: "node" | "way" | "relation";
+  osmId?: number;
+  /** Thông tin chi tiết */
+  details?: PlaceDetails;
 };
 
 export type DataSource = "live" | "demo";

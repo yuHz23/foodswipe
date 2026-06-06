@@ -1,0 +1,21 @@
+{
+  "name": "FoodSwipe — Lướt là đói",
+  "short_name": "FoodSwipe",
+  "description": "Lướt như Tinder để khám phá món & quán ăn thật quanh bạn.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#160d09",
+  "theme_color": "#ff5a3c",
+  "lang": "vi",
+  "categories": ["food", "lifestyle"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,26 +1,22 @@
 import type { FoodPlace } from "@/types";
 
 /**
- * Tạo link Google Maps trỏ đúng quán: ưu tiên tìm theo tên + địa chỉ
- * (để mở đúng địa điểm có ảnh/review thật của Google), fallback toạ độ.
+ * Link Google Maps trỏ ĐÚNG toạ độ của quán (chính xác vị trí trên bản đồ).
+ * Dùng toạ độ làm chính; kèm tên để Google hiển thị nhãn đúng địa điểm.
  */
 export function googleMapsUrl(place: FoodPlace): string {
-  const hasAddress =
-    place.address && !place.address.startsWith("Địa chỉ chưa");
-
-  let query: string;
-  if (place.name && hasAddress) {
-    query = encodeURIComponent(`${place.name}, ${place.address}`);
-  } else if (place.name) {
-    // Kèm toạ độ để Google ưu tiên đúng khu vực
-    query = encodeURIComponent(
-      `${place.name} ${place.location.lat},${place.location.lng}`,
-    );
-  } else {
-    query = `${place.location.lat},${place.location.lng}`;
-  }
-
+  const { lat, lng } = place.location;
+  // Toạ độ chính xác → thả ghim đúng chỗ. Kèm tên để Google nhận diện địa điểm.
+  const query = place.name
+    ? encodeURIComponent(`${place.name}, ${lat},${lng}`)
+    : `${lat},${lng}`;
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
+
+/** Link chỉ đường tới quán (Google Maps Directions) */
+export function googleDirectionsUrl(place: FoodPlace): string {
+  const { lat, lng } = place.location;
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }
 
 /** Mở Google Maps ở tab mới (an toàn noopener) */
