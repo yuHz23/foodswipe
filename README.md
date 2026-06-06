@@ -1,5 +1,7 @@
 # 🍜 FoodSwipe
 
+> 🌐 **Live demo:** https://foodswipe-blush.vercel.app — auto-deploy từ GitHub qua Vercel.
+
 Web app **"lướt như Tinder"** để khám phá món & quán ăn quanh bạn theo bán kính 5/10/15/20 km.
 MVP chạy **thuần frontend**: dữ liệu mock trong app, tính khoảng cách bằng Haversine, lưu trạng thái vào `localStorage` qua Zustand persist.
 
