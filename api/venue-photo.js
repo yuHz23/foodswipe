@@ -1,88 +1,144 @@
-// Vercel Serverless Function — trả ảnh thật của quán từ Foursquare Places API.
-// Key giữ ở server (env FOURSQUARE_API_KEY), client gọi /api/venue-photo.
-// Thử API mới (places-api.foursquare.com, Bearer) trước, fallback v3 legacy.
+// Vercel Serverless Function — trả ảnh thật của quán.
+// Nguồn ưu tiên: Foursquare (FOURSQUARE_API_KEY) → Google Places (GOOGLE_MAPS_API_KEY).
+// Key giữ ở server, client gọi /api/venue-photo. Graceful: hết nguồn → photo:null.
 
 const FSQ_VERSION = "2025-06-17";
 
-async function tryNewApi(key, lat, lng, name) {
-  const params = new URLSearchParams({
-    ll: `${lat},${lng}`,
-    radius: "150",
-    limit: "1",
-    fields: "fsq_place_id,name,photos",
-  });
-  if (name) params.set("query", name);
+// ---- Foursquare ----
+async function fsqSearch(url, headers) {
+  const r = await fetch(url, { headers });
+  if (!r.ok) return { ok: false, status: r.status };
+  const data = await r.json();
+  const place = data.results?.[0];
+  const photo = place?.photos?.[0];
+  const photoUrl = photo ? `${photo.prefix}original${photo.suffix}` : null;
+  return { ok: true, photo: photoUrl, name: place?.name ?? null };
+}
 
-  const r = await fetch(
-    `https://places-api.foursquare.com/places/search?${params}`,
+async function tryFoursquare(key, lat, lng, name) {
+  const qp = (idField) => {
+    const p = new URLSearchParams({
+      ll: `${lat},${lng}`,
+      radius: "150",
+      limit: "1",
+      fields: `${idField},name,photos`,
+    });
+    if (name) p.set("query", name);
+    return p;
+  };
+  // API mới (Bearer)
+  let r = await fsqSearch(
+    `https://places-api.foursquare.com/places/search?${qp("fsq_place_id")}`,
     {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "X-Places-Api-Version": FSQ_VERSION,
-        Accept: "application/json",
-      },
+      Authorization: `Bearer ${key}`,
+      "X-Places-Api-Version": FSQ_VERSION,
+      Accept: "application/json",
     },
   );
-  if (!r.ok) return { ok: false, status: r.status };
-  const data = await r.json();
-  const place = data.results?.[0];
-  const photo = place?.photos?.[0];
-  const url = photo ? `${photo.prefix}original${photo.suffix}` : null;
-  return { ok: true, photo: url, name: place?.name ?? null };
+  // Key legacy → thử v3
+  if (!r.ok && (r.status === 401 || r.status === 403)) {
+    r = await fsqSearch(
+      `https://api.foursquare.com/v3/places/search?${qp("fsq_id")}`,
+      { Authorization: key, Accept: "application/json" },
+    );
+  }
+  return r;
 }
 
-async function tryLegacyV3(key, lat, lng, name) {
-  const params = new URLSearchParams({
-    ll: `${lat},${lng}`,
-    radius: "150",
-    limit: "1",
-    fields: "fsq_id,name,photos",
-  });
-  if (name) params.set("query", name);
+// ---- Google Places (New) ----
+async function tryGooglePlaces(key, lat, lng, name) {
+  // 1) Text Search tìm quán quanh toạ độ
+  const searchRes = await fetch(
+    "https://places.googleapis.com/v1/places:searchText",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.photos",
+      },
+      body: JSON.stringify({
+        textQuery: name || "nhà hàng quán ăn",
+        locationBias: {
+          circle: {
+            center: { latitude: Number(lat), longitude: Number(lng) },
+            radius: 250,
+          },
+        },
+        maxResultCount: 1,
+        languageCode: "vi",
+      }),
+    },
+  );
+  if (!searchRes.ok) return { ok: false, status: searchRes.status };
+  const data = await searchRes.json();
+  const place = data.places?.[0];
+  const photoName = place?.photos?.[0]?.name;
+  const displayName = place?.displayName?.text ?? null;
+  if (!photoName) return { ok: true, photo: null, name: displayName };
 
-  const r = await fetch(`https://api.foursquare.com/v3/places/search?${params}`, {
-    headers: { Authorization: key, Accept: "application/json" },
-  });
-  if (!r.ok) return { ok: false, status: r.status };
-  const data = await r.json();
-  const place = data.results?.[0];
-  const photo = place?.photos?.[0];
-  const url = photo ? `${photo.prefix}original${photo.suffix}` : null;
-  return { ok: true, photo: url, name: place?.name ?? null };
+  // 2) Lấy ảnh: skipHttpRedirect=true → trả JSON photoUri (googleusercontent, không kèm key)
+  const mediaRes = await fetch(
+    `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=true&key=${key}`,
+  );
+  if (!mediaRes.ok) return { ok: false, status: mediaRes.status };
+  const media = await mediaRes.json();
+  return { ok: true, photo: media.photoUri ?? null, name: displayName };
 }
 
-// Cache lâu khi có ảnh thật; cache ngắn cho rỗng/lỗi để ảnh tự xuất hiện
-// ngay khi credit Foursquare khả dụng (không kẹt cache 7 ngày).
+// Cache lâu khi có ảnh; ngắn cho rỗng/lỗi để ảnh tự hiện khi nguồn sẵn sàng.
 function sendJson(res, body, ttl) {
-  res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
+  res.setHeader(
+    "Cache-Control",
+    `public, s-maxage=${ttl}, stale-while-revalidate=60`,
+  );
   return res.status(200).json(body);
 }
 
 export default async function handler(req, res) {
-  const key = process.env.FOURSQUARE_API_KEY;
+  const fsqKey = process.env.FOURSQUARE_API_KEY;
+  const googleKey = process.env.GOOGLE_MAPS_API_KEY;
   const { lat, lng, name } = req.query;
 
-  if (!key) return sendJson(res, { photo: null, reason: "no-key" }, 300);
+  if (!fsqKey && !googleKey)
+    return sendJson(res, { photo: null, reason: "no-key" }, 300);
   if (!lat || !lng)
     return sendJson(res, { photo: null, reason: "missing-params" }, 60);
 
   const q = typeof name === "string" ? name : undefined;
+  let photo = null;
+  let vName = null;
+  let source = null;
 
-  try {
-    // Thử API mới trước
-    let result = await tryNewApi(key, lat, lng, q);
-    // Nếu key thuộc loại legacy (401/403) hoặc endpoint mới lỗi → thử v3
-    if (!result.ok && (result.status === 401 || result.status === 403)) {
-      result = await tryLegacyV3(key, lat, lng, q);
+  // 1) Foursquare (giữ nguyên)
+  if (fsqKey) {
+    try {
+      const r = await tryFoursquare(fsqKey, lat, lng, q);
+      if (r.ok && r.photo) {
+        photo = r.photo;
+        vName = r.name;
+        source = "foursquare";
+      }
+    } catch {
+      // bỏ qua, thử nguồn kế
     }
-    if (!result.ok) {
-      // lỗi (vd hết credit 429) → cache ngắn để retry sớm
-      return sendJson(res, { photo: null, reason: `fsq-${result.status}` }, 120);
-    }
-    // Có ảnh → cache 7 ngày; không có ảnh cho quán này → cache 1 ngày
-    const ttl = result.photo ? 604800 : 86400;
-    return sendJson(res, { photo: result.photo, name: result.name }, ttl);
-  } catch (e) {
-    return sendJson(res, { photo: null, reason: "error" }, 120);
   }
+
+  // 2) Google Places (bổ sung)
+  if (!photo && googleKey) {
+    try {
+      const g = await tryGooglePlaces(googleKey, lat, lng, q);
+      if (g.ok && g.photo) {
+        photo = g.photo;
+        vName = g.name;
+        source = "google";
+      }
+    } catch {
+      // bỏ qua
+    }
+  }
+
+  if (photo)
+    return sendJson(res, { photo, name: vName, source }, 604800);
+  return sendJson(res, { photo: null, reason: "no-photo" }, 120);
 }
