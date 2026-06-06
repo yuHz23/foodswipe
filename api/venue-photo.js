@@ -51,19 +51,20 @@ async function tryLegacyV3(key, lat, lng, name) {
   return { ok: true, photo: url, name: place?.name ?? null };
 }
 
+// Cache lâu khi có ảnh thật; cache ngắn cho rỗng/lỗi để ảnh tự xuất hiện
+// ngay khi credit Foursquare khả dụng (không kẹt cache 7 ngày).
+function sendJson(res, body, ttl) {
+  res.setHeader("Cache-Control", `public, s-maxage=${ttl}, stale-while-revalidate=60`);
+  return res.status(200).json(body);
+}
+
 export default async function handler(req, res) {
   const key = process.env.FOURSQUARE_API_KEY;
   const { lat, lng, name } = req.query;
 
-  // Cache cạnh CDN 7 ngày để giảm số lần gọi Foursquare
-  res.setHeader(
-    "Cache-Control",
-    "public, s-maxage=604800, stale-while-revalidate=86400",
-  );
-
-  if (!key) return res.status(200).json({ photo: null, reason: "no-key" });
+  if (!key) return sendJson(res, { photo: null, reason: "no-key" }, 300);
   if (!lat || !lng)
-    return res.status(400).json({ photo: null, reason: "missing-params" });
+    return sendJson(res, { photo: null, reason: "missing-params" }, 60);
 
   const q = typeof name === "string" ? name : undefined;
 
@@ -75,10 +76,13 @@ export default async function handler(req, res) {
       result = await tryLegacyV3(key, lat, lng, q);
     }
     if (!result.ok) {
-      return res.status(200).json({ photo: null, reason: `fsq-${result.status}` });
+      // lỗi (vd hết credit 429) → cache ngắn để retry sớm
+      return sendJson(res, { photo: null, reason: `fsq-${result.status}` }, 120);
     }
-    return res.status(200).json({ photo: result.photo, name: result.name });
+    // Có ảnh → cache 7 ngày; không có ảnh cho quán này → cache 1 ngày
+    const ttl = result.photo ? 604800 : 86400;
+    return sendJson(res, { photo: result.photo, name: result.name }, ttl);
   } catch (e) {
-    return res.status(200).json({ photo: null, reason: "error" });
+    return sendJson(res, { photo: null, reason: "error" }, 120);
   }
 }
