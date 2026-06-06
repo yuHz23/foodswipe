@@ -11,6 +11,7 @@ import {
 } from "@/lib/maps";
 import AppShell from "@/components/AppShell";
 import Pill from "@/components/Pill";
+import StarRating from "@/components/StarRating";
 import { cn } from "@/lib/utils";
 import type { FoodPlace, PlaceDetails } from "@/types";
 
@@ -55,8 +56,16 @@ function featureChips(d: PlaceDetails): Feature[] {
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { userLocation, likedIds, like, unlike, placeCache, ensureVenuePhoto } =
-    useFoodSwipeStore();
+  const {
+    userLocation,
+    likedIds,
+    like,
+    unlike,
+    placeCache,
+    ensureVenuePhoto,
+    userRatings,
+    setUserRating,
+  } = useFoodSwipeStore();
 
   const cached = useMemo(
     () =>
@@ -200,13 +209,38 @@ export default function Detail() {
             {place.cuisine}
             {details.brand ? ` · ${details.brand}` : ""}
           </p>
+
+          {/* Đánh giá sao */}
+          <div className="mt-3 flex items-center gap-2">
+            {place.rating !== null ? (
+              <>
+                <StarRating value={place.rating} size={20} />
+                <span className="font-semibold">
+                  {place.rating.toFixed(1)}
+                </span>
+                {place.reviews !== null && (
+                  <span className="text-sm text-muted">
+                    ({place.reviews.toLocaleString("vi-VN")} đánh giá)
+                  </span>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openInGoogleMaps(place)}
+                className="text-sm font-medium text-accent"
+              >
+                ⭐ Xem đánh giá thật trên Google →
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Thông số */}
         <div className="grid grid-cols-3 gap-2 text-center">
           <Stat
-            label="Đánh giá"
-            value={place.rating !== null ? `⭐ ${place.rating.toFixed(1)}` : "—"}
+            label="Mức giá"
+            value={place.priceLevel !== null ? priceLabel(place.priceLevel) : "—"}
           />
           <Stat
             label="Khoảng cách"
@@ -223,6 +257,23 @@ export default function Detail() {
             }
           />
         </div>
+
+        {/* Đánh giá của bạn (lưu local) */}
+        <Section title="Đánh giá của bạn">
+          <div className="flex items-center justify-between">
+            <StarRating
+              value={userRatings?.[place.id] ?? 0}
+              size={28}
+              interactive
+              onChange={(n) => setUserRating(place.id, n)}
+            />
+            <span className="text-sm text-muted">
+              {userRatings?.[place.id]
+                ? `Bạn chấm ${userRatings[place.id]}/5`
+                : "Chạm để chấm sao"}
+            </span>
+          </div>
+        </Section>
 
         {place.description && (
           <p className="text-sm leading-relaxed text-text/90">
@@ -351,7 +402,7 @@ export default function Detail() {
             onClick={() => openInGoogleMaps(place)}
             className="flex-1 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold"
           >
-            🗺️ Xem trên Maps
+            🌟 Đánh giá & ảnh (Google)
           </button>
           <a
             href={googleDirectionsUrl(place)}

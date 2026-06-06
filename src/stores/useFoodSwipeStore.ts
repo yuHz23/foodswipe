@@ -39,6 +39,9 @@ type FoodSwipeState = {
   likedIds: string[];
   hiddenIds: string[];
 
+  /** Đánh giá của chính user (id → 1..5 sao), lưu local */
+  userRatings: Record<string, number>;
+
   // Actions — vị trí
   requestGeolocation: () => void;
   useDemoLocation: () => void;
@@ -62,6 +65,7 @@ type FoodSwipeState = {
   unlike: (id: string) => void;
   hide: (id: string) => void;
   resetHistory: () => void;
+  setUserRating: (id: string, rating: number) => void;
 };
 
 const DEFAULT_PREFS: UserPrefs = {
@@ -100,6 +104,7 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
 
       likedIds: [],
       hiddenIds: [],
+      userRatings: {},
 
       requestGeolocation: () => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -274,6 +279,10 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
           likedIds: s.likedIds.filter((l) => l !== id),
         })),
       resetHistory: () => set({ likedIds: [], hiddenIds: [] }),
+      setUserRating: (id, rating) =>
+        set((s) => ({
+          userRatings: { ...(s.userRatings ?? {}), [id]: rating },
+        })),
     }),
     {
       name: "foodsSwipe.store",
@@ -286,6 +295,7 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
         prefs: s.prefs,
         likedIds: s.likedIds,
         hiddenIds: s.hiddenIds,
+        userRatings: s.userRatings,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.userLocation) {
@@ -298,9 +308,10 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
         return {
           ...p,
           prefs: { ...DEFAULT_PREFS, ...(p.prefs ?? {}) },
+          userRatings: p.userRatings ?? {},
         } as FoodSwipeState;
       },
-      version: 3,
+      version: 4,
     },
   ),
 );
