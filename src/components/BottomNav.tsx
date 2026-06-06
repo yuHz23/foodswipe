@@ -9,6 +9,7 @@ type Tab = {
 
 const TABS: Tab[] = [
   { to: "/swipe", label: "Lướt", icon: "🔥" },
+  { to: "/recommend", label: "Gợi ý", icon: "💡" },
   { to: "/liked", label: "Đã thích", icon: "❤️" },
   { to: "/settings", label: "Cài đặt", icon: "⚙️" },
 ];

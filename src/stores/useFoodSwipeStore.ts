@@ -55,6 +55,7 @@ type FoodSwipeState = {
   toggleTag: (tag: FoodTag) => void;
   clearTags: () => void;
   setMaxPrice: (maxPrice: PriceLevel) => void;
+  setOpenNowOnly: (value: boolean) => void;
 
   // Actions — lịch sử
   like: (id: string) => void;
@@ -68,6 +69,7 @@ const DEFAULT_PREFS: UserPrefs = {
   sortMode: "distance",
   activeTags: [],
   maxPrice: 4,
+  openNowOnly: false,
 };
 
 const addUnique = (list: string[], id: string): string[] =>
@@ -256,6 +258,8 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
       clearTags: () => set((s) => ({ prefs: { ...s.prefs, activeTags: [] } })),
       setMaxPrice: (maxPrice) =>
         set((s) => ({ prefs: { ...s.prefs, maxPrice } })),
+      setOpenNowOnly: (value) =>
+        set((s) => ({ prefs: { ...s.prefs, openNowOnly: value } })),
 
       like: (id) =>
         set((s) => ({
@@ -288,7 +292,15 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
           state.locationStatus = "ready";
         }
       },
-      version: 2,
+      // Bổ sung key prefs mới (vd openNowOnly) cho state cũ đã lưu
+      migrate: (persisted, _version) => {
+        const p = (persisted ?? {}) as Partial<FoodSwipeState>;
+        return {
+          ...p,
+          prefs: { ...DEFAULT_PREFS, ...(p.prefs ?? {}) },
+        } as FoodSwipeState;
+      },
+      version: 3,
     },
   ),
 );

@@ -75,6 +75,8 @@ export type UserPrefs = {
   activeTags: FoodTag[];
   /** Giá tối đa cho phép (1..4) */
   maxPrice: PriceLevel;
+  /** Chỉ hiện quán đang mở (ẩn quán đã đóng) */
+  openNowOnly: boolean;
 };
 
 export type LocationStatus = "idle" | "loading" | "ready" | "denied" | "error";

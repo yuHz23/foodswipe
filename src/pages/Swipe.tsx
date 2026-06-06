@@ -106,6 +106,7 @@ export default function Swipe() {
             {prefs.activeTags.length > 0 && (
               <Pill variant="accent">{prefs.activeTags.length} tag</Pill>
             )}
+            {prefs.openNowOnly && <Pill variant="success">Đang mở</Pill>}
           </div>
         </header>
 

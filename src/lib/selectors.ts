@@ -61,6 +61,8 @@ export function buildDeck({
     if (p.distanceKm > prefs.radiusKm) return false;
     // Chỉ lọc giá khi quán có dữ liệu giá
     if (p.priceLevel !== null && p.priceLevel > prefs.maxPrice) return false;
+    // Đang mở: ẩn quán biết chắc đã đóng (giữ quán chưa rõ giờ)
+    if (prefs.openNowOnly && p.openNow === false) return false;
     if (
       prefs.activeTags.length > 0 &&
       !prefs.activeTags.some((tag) => p.tags.includes(tag))

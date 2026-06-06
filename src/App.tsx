@@ -6,6 +6,7 @@ import Swipe from "@/pages/Swipe";
 import Detail from "@/pages/Detail";
 import Liked from "@/pages/Liked";
 import Settings from "@/pages/Settings";
+import Recommend from "@/pages/Recommend";
 
 export default function App() {
   // Khởi tạo & áp theme ngay khi app mount
@@ -28,6 +29,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Onboarding />} />
       <Route path="/swipe" element={<Swipe />} />
+      <Route path="/recommend" element={<Recommend />} />
       <Route path="/detail/:id" element={<Detail />} />
       <Route path="/liked" element={<Liked />} />
       <Route path="/settings" element={<Settings />} />

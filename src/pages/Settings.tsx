@@ -34,6 +34,7 @@ export default function Settings() {
     setRadius,
     setSortMode,
     setMaxPrice,
+    setOpenNowOnly,
     toggleTag,
     clearTags,
     requestGeolocation,
@@ -120,6 +121,35 @@ export default function Settings() {
             value={prefs.sortMode}
             onChange={setSortMode}
           />
+        </Section>
+
+        {/* Đang mở cửa */}
+        <Section title="Đang mở cửa">
+          <div className="flex items-center justify-between">
+            <div className="pr-3">
+              <p className="font-medium">Chỉ quán đang mở</p>
+              <p className="text-sm text-muted">
+                Ẩn quán đã đóng cửa (quán chưa rõ giờ vẫn hiện).
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={prefs.openNowOnly}
+              onClick={() => setOpenNowOnly(!prefs.openNowOnly)}
+              className={cn(
+                "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                prefs.openNowOnly ? "bg-accent" : "bg-border",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
+                  prefs.openNowOnly ? "translate-x-6" : "translate-x-1",
+                )}
+              />
+            </button>
+          </div>
         </Section>
 
         {/* Mức giá tối đa */}
