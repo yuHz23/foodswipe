@@ -1,53 +1,69 @@
-// Vercel Serverless Function — trả ảnh thật của quán.
-// Nguồn ưu tiên: Foursquare (FOURSQUARE_API_KEY) → Google Places (GOOGLE_MAPS_API_KEY).
-// Key giữ ở server, client gọi /api/venue-photo. Graceful: hết nguồn → photo:null.
+// Vercel Serverless Function — lấy ẢNH + SAO + số review thật của quán.
+// Chuỗi nguồn (tự switch khi nguồn trước thiếu): Foursquare → Yelp → Google (chỉ ảnh).
+// Key giữ ở server. Graceful: hết nguồn → trả null, app dùng dữ liệu sẵn có.
 
 const FSQ_VERSION = "2025-06-17";
 
-// ---- Foursquare ----
-async function fsqSearch(url, headers) {
-  const r = await fetch(url, { headers });
-  if (!r.ok) return { ok: false, status: r.status };
-  const data = await r.json();
-  const place = data.results?.[0];
-  const photo = place?.photos?.[0];
-  const photoUrl = photo ? `${photo.prefix}original${photo.suffix}` : null;
-  return { ok: true, photo: photoUrl, name: place?.name ?? null };
-}
-
+// ---- Foursquare (rating thang 0..10 → quy về 0..5) ----
 async function tryFoursquare(key, lat, lng, name) {
-  const qp = (idField) => {
-    const p = new URLSearchParams({
-      ll: `${lat},${lng}`,
-      radius: "150",
-      limit: "1",
-      fields: `${idField},name,photos`,
-    });
-    if (name) p.set("query", name);
-    return p;
-  };
-  // API mới (Bearer)
-  let r = await fsqSearch(
-    `https://places-api.foursquare.com/places/search?${qp("fsq_place_id")}`,
+  const p = new URLSearchParams({
+    ll: `${lat},${lng}`,
+    radius: "200",
+    limit: "1",
+    fields: "name,rating,stats,photos",
+  });
+  if (name) p.set("query", name);
+  const r = await fetch(
+    `https://places-api.foursquare.com/places/search?${p}`,
     {
-      Authorization: `Bearer ${key}`,
-      "X-Places-Api-Version": FSQ_VERSION,
-      Accept: "application/json",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "X-Places-Api-Version": FSQ_VERSION,
+        Accept: "application/json",
+      },
     },
   );
-  // Key legacy → thử v3
-  if (!r.ok && (r.status === 401 || r.status === 403)) {
-    r = await fsqSearch(
-      `https://api.foursquare.com/v3/places/search?${qp("fsq_id")}`,
-      { Authorization: key, Accept: "application/json" },
-    );
-  }
-  return r;
+  if (!r.ok) return { ok: false, status: r.status };
+  const d = await r.json();
+  const pl = d.results?.[0];
+  if (!pl) return { ok: true, rating: null, reviewCount: null, photo: null };
+  const ph = pl.photos?.[0];
+  return {
+    ok: true,
+    rating:
+      typeof pl.rating === "number" ? Math.round((pl.rating / 2) * 10) / 10 : null,
+    reviewCount: pl.stats?.total_ratings ?? null,
+    photo: ph ? `${ph.prefix}original${ph.suffix}` : null,
+  };
 }
 
-// ---- Google Places (New) ----
+// ---- Yelp Fusion (rating 0..5) ----
+async function tryYelp(key, lat, lng, name) {
+  const p = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lng),
+    radius: "1000",
+    limit: "1",
+    sort_by: "distance",
+  });
+  if (name) p.set("term", name);
+  const r = await fetch(`https://api.yelp.com/v3/businesses/search?${p}`, {
+    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+  });
+  if (!r.ok) return { ok: false, status: r.status };
+  const d = await r.json();
+  const b = d.businesses?.[0];
+  if (!b) return { ok: true, rating: null, reviewCount: null, photo: null };
+  return {
+    ok: true,
+    rating: typeof b.rating === "number" ? b.rating : null,
+    reviewCount: b.review_count ?? null,
+    photo: b.image_url || null,
+  };
+}
+
+// ---- Google Places (chỉ ảnh) ----
 async function tryGooglePlaces(key, lat, lng, name) {
-  // 1) Text Search tìm quán quanh toạ độ
   const searchRes = await fetch(
     "https://places.googleapis.com/v1/places:searchText",
     {
@@ -55,7 +71,7 @@ async function tryGooglePlaces(key, lat, lng, name) {
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.photos",
+        "X-Goog-FieldMask": "places.id,places.photos",
       },
       body: JSON.stringify({
         textQuery: name || "nhà hàng quán ăn",
@@ -72,21 +88,16 @@ async function tryGooglePlaces(key, lat, lng, name) {
   );
   if (!searchRes.ok) return { ok: false, status: searchRes.status };
   const data = await searchRes.json();
-  const place = data.places?.[0];
-  const photoName = place?.photos?.[0]?.name;
-  const displayName = place?.displayName?.text ?? null;
-  if (!photoName) return { ok: true, photo: null, name: displayName };
-
-  // 2) Lấy ảnh: skipHttpRedirect=true → trả JSON photoUri (googleusercontent, không kèm key)
+  const photoName = data.places?.[0]?.photos?.[0]?.name;
+  if (!photoName) return { ok: true, photo: null };
   const mediaRes = await fetch(
     `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&skipHttpRedirect=true&key=${key}`,
   );
   if (!mediaRes.ok) return { ok: false, status: mediaRes.status };
   const media = await mediaRes.json();
-  return { ok: true, photo: media.photoUri ?? null, name: displayName };
+  return { ok: true, photo: media.photoUri ?? null };
 }
 
-// Cache lâu khi có ảnh; ngắn cho rỗng/lỗi để ảnh tự hiện khi nguồn sẵn sàng.
 function sendJson(res, body, ttl) {
   res.setHeader(
     "Cache-Control",
@@ -97,48 +108,72 @@ function sendJson(res, body, ttl) {
 
 export default async function handler(req, res) {
   const fsqKey = process.env.FOURSQUARE_API_KEY;
+  const yelpKey = process.env.YELP_API_KEY;
   const googleKey = process.env.GOOGLE_MAPS_API_KEY;
   const { lat, lng, name } = req.query;
 
-  if (!fsqKey && !googleKey)
-    return sendJson(res, { photo: null, reason: "no-key" }, 300);
+  const empty = { photo: null, rating: null, reviewCount: null, source: null };
+  if (!fsqKey && !yelpKey && !googleKey)
+    return sendJson(res, { ...empty, reason: "no-key" }, 300);
   if (!lat || !lng)
-    return sendJson(res, { photo: null, reason: "missing-params" }, 60);
+    return sendJson(res, { ...empty, reason: "missing-params" }, 60);
 
   const q = typeof name === "string" ? name : undefined;
-  let photo = null;
-  let vName = null;
-  let source = null;
+  const out = { ...empty };
 
-  // 1) Foursquare (giữ nguyên)
+  // 1) Foursquare
   if (fsqKey) {
     try {
       const r = await tryFoursquare(fsqKey, lat, lng, q);
-      if (r.ok && r.photo) {
-        photo = r.photo;
-        vName = r.name;
-        source = "foursquare";
+      if (r.ok) {
+        if (r.rating != null) {
+          out.rating = r.rating;
+          out.reviewCount = r.reviewCount;
+          out.source = out.source || "foursquare";
+        }
+        if (r.photo) {
+          out.photo = r.photo;
+          out.source = out.source || "foursquare";
+        }
       }
     } catch {
-      // bỏ qua, thử nguồn kế
+      /* switch nguồn kế */
     }
   }
 
-  // 2) Google Places (bổ sung)
-  if (!photo && googleKey) {
+  // 2) Yelp — lấp chỗ thiếu khi Foursquare hết/không có
+  if (yelpKey && (out.rating == null || out.photo == null)) {
+    try {
+      const y = await tryYelp(yelpKey, lat, lng, q);
+      if (y.ok) {
+        if (out.rating == null && y.rating != null) {
+          out.rating = y.rating;
+          out.reviewCount = y.reviewCount;
+          out.source = out.source || "yelp";
+        }
+        if (out.photo == null && y.photo) {
+          out.photo = y.photo;
+          out.source = out.source || "yelp";
+        }
+      }
+    } catch {
+      /* thử Google */
+    }
+  }
+
+  // 3) Google — chỉ bổ sung ảnh
+  if (googleKey && out.photo == null) {
     try {
       const g = await tryGooglePlaces(googleKey, lat, lng, q);
       if (g.ok && g.photo) {
-        photo = g.photo;
-        vName = g.name;
-        source = "google";
+        out.photo = g.photo;
+        out.source = out.source || "google";
       }
     } catch {
-      // bỏ qua
+      /* bỏ qua */
     }
   }
 
-  if (photo)
-    return sendJson(res, { photo, name: vName, source }, 604800);
-  return sendJson(res, { photo: null, reason: "no-photo" }, 120);
+  const hasData = out.photo || out.rating != null;
+  return sendJson(res, out, hasData ? 604800 : 120);
 }

@@ -227,19 +227,24 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
           url.searchParams.set("name", place.name);
           const res = await fetch(url.toString());
           if (!res.ok) return;
-          const data = (await res.json()) as { photo: string | null };
-          if (!data.photo) return;
-          const photo = data.photo;
+          const data = (await res.json()) as {
+            photo: string | null;
+            rating: number | null;
+            reviewCount: number | null;
+          };
+          if (!data.photo && data.rating == null) return;
+
+          const patch = (p: FoodPlace): FoodPlace => ({
+            ...p,
+            photoUrl: data.photo ?? p.photoUrl,
+            rating: data.rating ?? p.rating,
+            reviews: data.reviewCount ?? p.reviews,
+          });
           set((s) => ({
-            places: s.places.map((p) =>
-              p.id === place.id ? { ...p, photoUrl: photo } : p,
-            ),
+            places: s.places.map((p) => (p.id === place.id ? patch(p) : p)),
             placeCache: {
               ...s.placeCache,
-              [place.id]: {
-                ...(s.placeCache[place.id] ?? place),
-                photoUrl: photo,
-              },
+              [place.id]: patch(s.placeCache[place.id] ?? place),
             },
           }));
         } catch {
