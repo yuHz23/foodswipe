@@ -149,24 +149,40 @@ export type FetchPlacesResult = {
   places: FoodPlace[];
 };
 
-/**
- * Lấy danh sách quán quanh `origin` trong bán kính `radiusKm` (km).
- * Thử lần lượt các endpoint; ném lỗi nếu tất cả đều hỏng.
- */
-export async function fetchNearbyPlaces(
+/** Lấy elements Overpass: ưu tiên proxy serverless (ổn định + cache), fallback gọi thẳng */
+async function fetchOverpassElements(
   origin: LatLng,
   radiusKm: number,
   signal?: AbortSignal,
-): Promise<FetchPlacesResult> {
+): Promise<OverpassElement[]> {
+  // 1) Proxy same-origin /api/nearby (server-side, có cache CDN, không lo CORS/UA)
+  try {
+    const lat = origin.lat.toFixed(3); // làm tròn ~110m để tăng cache hit
+    const lng = origin.lng.toFixed(3);
+    const res = await fetch(
+      `/api/nearby?lat=${lat}&lng=${lng}&radius=${radiusKm}`,
+      { signal },
+    );
+    if (res.ok) {
+      const data = (await res.json()) as OverpassResponse & { error?: string };
+      if (Array.isArray(data.elements) && (data.elements.length > 0 || !data.error)) {
+        return data.elements;
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    // proxy không có (vd local dev) → fallback gọi thẳng
+  }
+
+  // 2) Fallback: gọi trực tiếp các endpoint Overpass
   const radiusM = Math.round(radiusKm * 1000);
   const query = `[out:json][timeout:25];
 (
   nwr[amenity~"${AMENITY_RE}"](around:${radiusM},${origin.lat},${origin.lng});
 );
-out center 120;`;
+out center 150;`;
 
   let lastError: unknown = null;
-
   for (const endpoint of ENDPOINTS) {
     try {
       const res = await fetch(endpoint, {
@@ -176,30 +192,40 @@ out center 120;`;
         signal,
       });
       if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-
       const data = (await res.json()) as OverpassResponse;
-      const places = data.elements
-        .map(toFoodPlace)
-        .filter((p): p is FoodPlace => p !== null);
-
-      // Dedupe theo toạ độ ~ (tránh trùng node/way cùng quán)
-      const seen = new Set<string>();
-      const unique = places.filter((p) => {
-        const key = `${p.name}|${p.location.lat.toFixed(4)}|${p.location.lng.toFixed(4)}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      return { places: unique };
+      return data.elements;
     } catch (err) {
       if (signal?.aborted) throw err;
       lastError = err;
-      // thử endpoint kế tiếp
     }
   }
-
   throw lastError instanceof Error
     ? lastError
     : new Error("Không gọi được Overpass API");
+}
+
+/**
+ * Lấy danh sách quán quanh `origin` trong bán kính `radiusKm` (km).
+ */
+export async function fetchNearbyPlaces(
+  origin: LatLng,
+  radiusKm: number,
+  signal?: AbortSignal,
+): Promise<FetchPlacesResult> {
+  const elements = await fetchOverpassElements(origin, radiusKm, signal);
+
+  const places = elements
+    .map(toFoodPlace)
+    .filter((p): p is FoodPlace => p !== null);
+
+  // Dedupe theo tên + toạ độ ~ (tránh trùng node/way cùng quán)
+  const seen = new Set<string>();
+  const unique = places.filter((p) => {
+    const key = `${p.name}|${p.location.lat.toFixed(4)}|${p.location.lng.toFixed(4)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { places: unique };
 }
