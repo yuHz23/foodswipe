@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useFoodSwipeStore } from "@/stores/useFoodSwipeStore";
 import { FOOD_PLACES } from "@/data/foodPlaces";
 import { haversineKm, formatKm } from "@/utils/geo";
-import { priceLabel } from "@/components/FoodCard";
+import { priceLabel, handleImgError } from "@/components/FoodCard";
+import { openInGoogleMaps } from "@/lib/maps";
 import AppShell from "@/components/AppShell";
 import Pill from "@/components/Pill";
 
@@ -44,11 +45,7 @@ export default function Detail() {
     ? haversineKm(userLocation, place.location)
     : null;
 
-  const openMaps = () => {
-    const { lat, lng } = place.location;
-    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
+  const openMaps = () => openInGoogleMaps(place);
 
   return (
     <AppShell>
@@ -57,6 +54,7 @@ export default function Detail() {
         <img
           src={place.photoUrl}
           alt={place.name}
+          onError={(e) => handleImgError(e, place.id)}
           className="h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-transparent to-black/30" />

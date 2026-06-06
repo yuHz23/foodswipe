@@ -1,7 +1,20 @@
+import type { SyntheticEvent } from "react";
 import type { FoodPlace, PriceLevel } from "@/types";
 import { formatKm } from "@/utils/geo";
 import { cn } from "@/lib/utils";
+import { fallbackPhoto } from "@/lib/foodPhotos";
 import Pill from "./Pill";
+
+/** Đổi sang ảnh dự phòng nếu ảnh chính lỗi (chỉ 1 lần, tránh lặp) */
+export function handleImgError(
+  e: SyntheticEvent<HTMLImageElement>,
+  seed: string,
+): void {
+  const img = e.currentTarget;
+  if (img.dataset.fallback) return;
+  img.dataset.fallback = "1";
+  img.src = fallbackPhoto(seed);
+}
 
 type FoodCardProps = {
   place: FoodPlace;
@@ -34,6 +47,7 @@ export default function FoodCard({
         alt={place.name}
         loading="lazy"
         draggable={false}
+        onError={(e) => handleImgError(e, place.id)}
         className="absolute inset-0 h-full w-full select-none object-cover"
       />
       {/* Lớp phủ gradient để chữ dễ đọc */}

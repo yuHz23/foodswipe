@@ -1,11 +1,11 @@
 import type { FoodPlace, LatLng } from "@/types";
+import { pickFoodPhoto } from "@/lib/foodPhotos";
 
 /** Vị trí demo: trung tâm Quận 1, TP.HCM (Nhà thờ Đức Bà) */
 export const DEMO_LOCATION: LatLng = { lat: 10.7797, lng: 106.699 };
 
-/** Ảnh ổn định theo seed (picsum) để demo có hình "thật" */
-const photo = (seed: string): string =>
-  `https://picsum.photos/seed/${encodeURIComponent(seed)}/800/1000`;
+/** Seed ảnh tạm (sẽ được thay bằng ảnh món theo tag khi build FOOD_PLACES) */
+const photo = (seed: string): string => seed;
 
 const RAW_PLACES: Array<Omit<FoodPlace, "source">> = [
   {
@@ -253,4 +253,6 @@ const RAW_PLACES: Array<Omit<FoodPlace, "source">> = [
 export const FOOD_PLACES: FoodPlace[] = RAW_PLACES.map((p) => ({
   ...p,
   source: "mock",
+  // Ảnh món thật theo tag (seed = id để ổn định)
+  photoUrl: pickFoodPhoto(p.tags, p.id),
 }));

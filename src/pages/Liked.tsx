@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useFoodSwipeStore } from "@/stores/useFoodSwipeStore";
 import { FOOD_PLACES } from "@/data/foodPlaces";
 import { haversineKm, formatKm } from "@/utils/geo";
-import { priceLabel } from "@/components/FoodCard";
+import { priceLabel, handleImgError } from "@/components/FoodCard";
+import { openInGoogleMaps } from "@/lib/maps";
 import AppShell from "@/components/AppShell";
 import Pill from "@/components/Pill";
 
@@ -19,12 +20,6 @@ export default function Liked() {
       .filter((p): p is NonNullable<typeof p> => Boolean(p));
   }, [likedIds, placeCache]);
 
-  const openMaps = (lat: number, lng: number) =>
-    window.open(
-      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
 
   return (
     <AppShell>
@@ -69,6 +64,7 @@ export default function Liked() {
                   <img
                     src={place.photoUrl}
                     alt={place.name}
+                    onError={(e) => handleImgError(e, place.id)}
                     className="h-20 w-20 rounded-xl object-cover"
                   />
                 </button>
@@ -106,8 +102,8 @@ export default function Liked() {
                   </button>
                   <button
                     type="button"
-                    aria-label="Mở bản đồ"
-                    onClick={() => openMaps(place.location.lat, place.location.lng)}
+                    aria-label="Mở Google Maps"
+                    onClick={() => openInGoogleMaps(place)}
                     className="text-lg"
                   >
                     🗺️

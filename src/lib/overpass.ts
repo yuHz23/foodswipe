@@ -1,4 +1,5 @@
 import type { FoodPlace, LatLng } from "@/types";
+import { osmRealImage, pickFoodPhoto } from "@/lib/foodPhotos";
 
 /**
  * Lấy quán ăn thật quanh một vị trí từ OpenStreetMap qua Overpass API.
@@ -121,19 +122,22 @@ function toFoodPlace(el: OverpassElement): FoodPlace | null {
   const description =
     descParts.join(" ") || "Quán ăn quanh khu vực bạn (dữ liệu OpenStreetMap).";
 
+  const mapped = mapTags(tags);
+
   return {
     id: `osm-${el.type}-${el.id}`,
     name,
     cuisine,
     description,
-    tags: mapTags(tags),
+    tags: mapped,
     rating,
     reviews: null,
     priceLevel: null,
     address: buildAddress(tags),
     location: { lat, lng: lon },
     openNow: parseOpenNow(tags),
-    photoUrl: `https://picsum.photos/seed/osm${el.id}/800/1000`,
+    // Ảnh thật từ OSM nếu có, ngược lại ảnh món thật theo loại
+    photoUrl: osmRealImage(tags) ?? pickFoodPhoto(mapped, `osm${el.id}`),
     source: "osm",
     mapUrl:
       tags.website ||
