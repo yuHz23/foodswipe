@@ -26,6 +26,7 @@ export default function Swipe() {
     dataSource,
     loadNearbyPlaces,
     setDataSource,
+    ensureVenuePhoto,
   } = useFoodSwipeStore();
 
   // Chưa có vị trí → quay lại onboarding
@@ -52,6 +53,11 @@ export default function Swipe() {
       hiddenIds,
     });
   }, [userLocation, places, prefs, likedIds, hiddenIds]);
+
+  // Lấy ảnh thật từng quán (Foursquare) cho vài thẻ sắp tới
+  useEffect(() => {
+    deck.slice(0, 4).forEach((p) => void ensureVenuePhoto(p));
+  }, [deck, ensureVenuePhoto]);
 
   const handleSwiped = (dir: SwipeDirection, place: RankedPlace) => {
     if (dir === "like") like(place.id);

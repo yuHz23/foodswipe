@@ -29,6 +29,8 @@ type FoodSwipeState = {
   placesError: string | null;
   /** Cache mọi quán đã gặp (để Detail/Liked tra cứu theo id) */
   placeCache: Record<string, FoodPlace>;
+  /** Đánh dấu quán đã thử lấy ảnh thật (tránh gọi API trùng) */
+  photoFetched: Record<string, boolean>;
 
   // Tuỳ chọn
   prefs: UserPrefs;
@@ -45,6 +47,7 @@ type FoodSwipeState = {
   // Actions — dữ liệu
   setDataSource: (src: DataSource) => void;
   loadNearbyPlaces: () => Promise<void>;
+  ensureVenuePhoto: (place: FoodPlace) => Promise<void>;
 
   // Actions — prefs
   setRadius: (radiusKm: RadiusKm) => void;
@@ -89,6 +92,7 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
       placesStatus: "idle",
       placesError: null,
       placeCache: {},
+      photoFetched: {},
 
       prefs: DEFAULT_PREFS,
 
@@ -199,6 +203,40 @@ export const useFoodSwipeStore = create<FoodSwipeState>()(
           });
         } finally {
           if (inFlight === controller) inFlight = null;
+        }
+      },
+
+      ensureVenuePhoto: async (place) => {
+        if (typeof window === "undefined") return;
+        if (get().photoFetched[place.id]) return;
+        // đánh dấu trước để không gọi trùng khi nhiều card render
+        set((s) => ({
+          photoFetched: { ...s.photoFetched, [place.id]: true },
+        }));
+        try {
+          const url = new URL("/api/venue-photo", window.location.origin);
+          url.searchParams.set("lat", String(place.location.lat));
+          url.searchParams.set("lng", String(place.location.lng));
+          url.searchParams.set("name", place.name);
+          const res = await fetch(url.toString());
+          if (!res.ok) return;
+          const data = (await res.json()) as { photo: string | null };
+          if (!data.photo) return;
+          const photo = data.photo;
+          set((s) => ({
+            places: s.places.map((p) =>
+              p.id === place.id ? { ...p, photoUrl: photo } : p,
+            ),
+            placeCache: {
+              ...s.placeCache,
+              [place.id]: {
+                ...(s.placeCache[place.id] ?? place),
+                photoUrl: photo,
+              },
+            },
+          }));
+        } catch {
+          // im lặng — giữ ảnh hiện tại (LoremFlickr)
         }
       },
 

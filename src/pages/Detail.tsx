@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useFoodSwipeStore } from "@/stores/useFoodSwipeStore";
 import { FOOD_PLACES } from "@/data/foodPlaces";
@@ -11,7 +11,7 @@ import Pill from "@/components/Pill";
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { userLocation, likedIds, like, unlike, placeCache } =
+  const { userLocation, likedIds, like, unlike, placeCache, ensureVenuePhoto } =
     useFoodSwipeStore();
 
   const place = useMemo(
@@ -19,6 +19,11 @@ export default function Detail() {
       (id ? placeCache[id] : undefined) ?? FOOD_PLACES.find((p) => p.id === id),
     [id, placeCache],
   );
+
+  // Lấy ảnh thật của quán này (Foursquare) khi mở chi tiết
+  useEffect(() => {
+    if (place) void ensureVenuePhoto(place);
+  }, [place?.id, ensureVenuePhoto]);
 
   if (!place) {
     return (
